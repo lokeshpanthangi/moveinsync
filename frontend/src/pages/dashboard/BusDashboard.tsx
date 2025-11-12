@@ -1,11 +1,16 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar, Download, MapPin, FileText, Link2, Clock, Users, TrendingUp, TrendingDown } from "lucide-react";
+import { Calendar, Download, MapPin, FileText, Link2, Clock, Users, TrendingUp, TrendingDown, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AssignVehicleModal } from "@/components/modals/AssignVehicleModal";
+import { CreateTripModal } from "@/components/modals/CreateTripModal";
 import { useToast } from "@/hooks/use-toast";
+import type { Route, Vehicle, DailyTripCreate } from "@/types";
+import { RouteStatus, VehicleType } from "@/types";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 const metrics = [
   { icon: "🚌", label: "Vehicles Not Assigned", value: 42, trend: "+12", trendUp: true },
@@ -26,10 +31,51 @@ const trips = [
 export default function BusDashboard() {
   const [selectedTrip, setSelectedTrip] = useState(trips[0]);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [createTripModalOpen, setCreateTripModalOpen] = useState(false);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const { toast } = useToast();
+
+  useEffect(() => {
+    fetchRoutes();
+    fetchVehicles();
+  }, []);
+
+  const fetchRoutes = async () => {
+    try {
+      const response = await fetch(`${API_URL}/routes/all`);
+      if (response.ok) {
+        const data = await response.json();
+        setRoutes(data);
+      }
+    } catch (error) {
+      console.error("Error fetching routes:", error);
+    }
+  };
+
+  const fetchVehicles = async () => {
+    try {
+      const response = await fetch(`${API_URL}/vehicles/all`);
+      if (response.ok) {
+        const data = await response.json();
+        setVehicles(data);
+      }
+    } catch (error) {
+      console.error("Error fetching vehicles:", error);
+    }
+  };
 
   const handleAssignVehicle = (data: any) => {
     toast({ title: "Vehicle assigned successfully!" });
+  };
+
+  const handleCreateTrip = (data: DailyTripCreate) => {
+    console.log("Creating trip:", data);
+    toast({ 
+      title: "Trip created successfully!",
+      description: `${data.display_name} has been added to today's schedule.`
+    });
+    setCreateTripModalOpen(false);
   };
 
   return (
@@ -88,6 +134,13 @@ export default function BusDashboard() {
 
       {/* Action Toolbar */}
       <div className="flex items-center gap-3 mb-6">
+        <Button 
+          className="gap-2 bg-primary hover:bg-primary-dark"
+          onClick={() => setCreateTripModalOpen(true)}
+        >
+          <Plus className="w-4 h-4" />
+          Add Trip
+        </Button>
         <Button variant="outline" className="gap-2">
           <MapPin className="w-4 h-4" />
           Track Route
@@ -221,6 +274,14 @@ export default function BusDashboard() {
         open={assignModalOpen}
         onOpenChange={setAssignModalOpen}
         onSubmit={handleAssignVehicle}
+      />
+
+      <CreateTripModal
+        open={createTripModalOpen}
+        onOpenChange={setCreateTripModalOpen}
+        onSubmit={handleCreateTrip}
+        availableRoutes={routes}
+        availableVehicles={vehicles}
       />
     </>
   );
