@@ -1,7 +1,7 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Calendar, Download, MapPin, FileText, Link2, Clock, Users, TrendingUp, TrendingDown, Plus, Loader2 } from "lucide-react";
+import { Calendar, MapPin, FileText, Link2, Plus, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useState, useEffect } from "react";
 import { AssignVehicleModal } from "@/components/modals/AssignVehicleModal";
@@ -253,34 +253,6 @@ export default function BusDashboard() {
     }
   };
 
-  // Calculate metrics from actual data
-  const metrics = [
-    { 
-      icon: "🚌", 
-      label: "Total Vehicles", 
-      value: vehicles.length,
-      status: vehicles.filter(v => v.status === "active").length + " Active"
-    },
-    { 
-      icon: "📋", 
-      label: "Total Trips", 
-      value: trips.length,
-      status: trips.filter(t => t.live_status === "scheduled").length + " Scheduled"
-    },
-    { 
-      icon: "👥", 
-      label: "Total Drivers", 
-      value: drivers.length,
-      status: "Available"
-    },
-    { 
-      icon: "🔄", 
-      label: "Active Deployments", 
-      value: deployments.length,
-      pulse: deployments.length > 0
-    },
-  ];
-
   // Filter trips based on search
   const filteredTrips = trips.filter((trip) =>
     trip.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -342,28 +314,6 @@ export default function BusDashboard() {
         </div>
       </div>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        {metrics.map((metric, index) => (
-          <Card key={index} className="p-6 hover:shadow-card-hover transition-smooth">
-            <div className="flex items-start justify-between mb-4">
-              <div className="text-4xl">{metric.icon}</div>
-              <Download className="w-5 h-5 text-muted-foreground cursor-pointer hover:text-foreground transition-fast" />
-            </div>
-            <div className="text-4xl font-bold text-foreground mb-2">{metric.value}</div>
-            <div className="text-sm text-muted-foreground mb-2">{metric.label}</div>
-            {metric.status && (
-              <span className="inline-block px-2 py-1 bg-success/10 text-success text-xs rounded-full">
-                {metric.status}
-              </span>
-            )}
-            {metric.pulse && (
-              <div className="w-2 h-2 bg-success rounded-full animate-pulse mt-2"></div>
-            )}
-          </Card>
-        ))}
-      </div>
-
       {/* Action Toolbar */}
       <div className="flex items-center gap-3 mb-6">
         <Button 
@@ -398,7 +348,7 @@ export default function BusDashboard() {
             </select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[750px] overflow-y-auto scrollbar-hide">
             {loading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -452,15 +402,13 @@ export default function BusDashboard() {
               <div className="mb-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-2xl font-bold text-foreground">{selectedTrip.display_name}</h2>
-                  <Button variant="outline" className="gap-2">
-                    <Clock className="w-4 h-4" />
+                  <Button variant="outline">
                     History
                   </Button>
                 </div>
                 
                 <div className="flex items-center gap-6 text-sm text-muted-foreground mb-4">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
+                  <div>
                     Trip ID: {selectedTrip.trip_id}
                   </div>
                   <div>Route ID: {selectedTrip.route_id}</div>
@@ -539,7 +487,6 @@ export default function BusDashboard() {
               {/* Deployments List or Empty State */}
               {selectedTripDeployments.length === 0 ? (
                 <div className="text-center py-8">
-                  <div className="text-6xl mb-4">🚌❓</div>
                   <p className="text-muted-foreground mb-4">Vehicle not assigned yet</p>
                   <Button 
                     className="bg-primary hover:bg-primary-dark" 
