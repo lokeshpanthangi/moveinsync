@@ -1,10 +1,11 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Clock, Download, MoreVertical, Edit, Trash2, Copy, Loader2 } from "lucide-react";
+import { Clock, Download, MoreVertical, Edit, Trash2, Copy, Loader2, MapPin } from "lucide-react";
 import { useState, useEffect } from "react";
 import { CreateRouteModal } from "@/components/modals/CreateRouteModal";
 import { DeleteConfirmDialog } from "@/components/modals/DeleteConfirmDialog";
+import { RouteMapModal } from "@/components/modals/RouteMapModal";
 import { useToast } from "@/hooks/use-toast";
 import { Path, Route, RouteCreate, RouteStatus } from "@/types";
 import {
@@ -34,6 +35,8 @@ export default function ManageRoutes() {
   const [editingRoute, setEditingRoute] = useState<Route | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingRouteId, setDeletingRouteId] = useState<number | null>(null);
+  const [mapModalOpen, setMapModalOpen] = useState(false);
+  const [selectedRouteForMap, setSelectedRouteForMap] = useState<Route | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
 
@@ -343,6 +346,13 @@ export default function ManageRoutes() {
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => {
+                          setSelectedRouteForMap(route);
+                          setMapModalOpen(true);
+                        }}>
+                          <MapPin className="w-4 h-4 mr-2" />
+                          View on Map
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setEditingRoute(route)}>
                           <Edit className="w-4 h-4 mr-2" />
                           Edit Route
@@ -448,6 +458,12 @@ export default function ManageRoutes() {
         onConfirm={handleDeleteRoute}
         title="Delete Route"
         description="Are you sure you want to delete this route? This action cannot be undone."
+      />
+
+      <RouteMapModal
+        open={mapModalOpen}
+        onOpenChange={setMapModalOpen}
+        route={selectedRouteForMap}
       />
     </>
   );
