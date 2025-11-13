@@ -277,7 +277,7 @@ export default function BusDashboard() {
 
   return (
     <>
-    <DashboardLayout>
+    <DashboardLayout currentPage="busDashboard">
       {/* Page Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
