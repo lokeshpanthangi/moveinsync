@@ -1,8 +1,20 @@
-import { useState } from "react";
-import { Sparkles, X, Minimize2, Send, Mic, Paperclip } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Sparkles, X, Minimize2, Send, Mic, Paperclip, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 export function MoviAssistant() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,30 +26,122 @@ export function MoviAssistant() {
     },
   ]);
   const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  const [confirmationDialog, setConfirmationDialog] = useState<{
+    open: boolean;
+    message: string;
+    consequenceInfo: any;
+  }>({ open: false, message: "", consequenceInfo: null });
+
+  // Generate session ID on mount
+  useEffect(() => {
+    setSessionId(`session-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+  }, []);
 
   const quickActions = [
     "Show unassigned vehicles",
-    "Create a new route",
-    "What trips need attention?",
+    "List all vehicles",
+    "How many vehicles are not assigned?",
   ];
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
+  const handleSend = async () => {
+    if (!inputValue.trim() || isLoading) return;
     
-    setMessages([
-      ...messages,
+    const userMessage = inputValue;
+    setInputValue("");
+    
+    // Add user message to chat
+    setMessages(prev => [
+      ...prev,
       {
         role: "user",
-        content: inputValue,
-        timestamp: new Date(),
-      },
-      {
-        role: "assistant",
-        content: "I'm processing your request. This is a demo response.",
+        content: userMessage,
         timestamp: new Date(),
       },
     ]);
-    setInputValue("");
+    
+    setIsLoading(true);
+    
+    try {
+      // Get current page context
+      const currentPath = window.location.pathname;
+      let contextPage = "unknown";
+      if (currentPath.includes("/buses")) contextPage = "busDashboard";
+      else if (currentPath.includes("/routes")) contextPage = "routes";
+      else if (currentPath.includes("/stops-paths")) contextPage = "stops_paths";
+      else if (currentPath.includes("/vehicles")) contextPage = "vehicles";
+      else if (currentPath.includes("/drivers")) contextPage = "drivers";
+      
+      // Call Movi API
+      const response = await fetch(`${API_URL}/movi/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage,
+          session_id: sessionId,
+          context_page: contextPage,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to get response from Movi");
+      }
+      
+      const data = await response.json();
+      
+      // Check if confirmation is needed (human-in-the-loop)
+      if (data.awaiting_confirmation && data.consequence_info) {
+        setConfirmationDialog({
+          open: true,
+          message: data.consequence_info.message,
+          consequenceInfo: data.consequence_info,
+        });
+        
+        // Add Movi's confirmation request to chat
+        setMessages(prev => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.response,
+            timestamp: new Date(),
+          },
+        ]);
+      } else {
+        // Normal response
+        setMessages(prev => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.response,
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error calling Movi:", error);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Sorry, I encountered an error. Please try again.",
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleConfirmAction = async (confirmed: boolean) => {
+    setConfirmationDialog({ open: false, message: "", consequenceInfo: null });
+    
+    // Send user's yes/no response back to Movi
+    const confirmMessage = confirmed ? "yes, proceed" : "no, cancel";
+    setInputValue(confirmMessage);
+    
+    // Automatically send the confirmation
+    setTimeout(() => handleSend(), 100);
   };
 
   return (
@@ -159,13 +263,40 @@ export function MoviAssistant() {
                 size="icon"
                 className="h-9 w-9 flex-shrink-0 bg-primary hover:bg-primary-dark"
                 onClick={handleSend}
+                disabled={isLoading}
               >
-                <Send className="w-4 h-4" />
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </div>
         </div>
       )}
+      
+      {/* Confirmation Dialog for Human-in-the-Loop */}
+      <AlertDialog open={confirmationDialog.open} onOpenChange={(open) => 
+        !open && setConfirmationDialog({ open: false, message: "", consequenceInfo: null })
+      }>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠️ Confirmation Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmationDialog.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => handleConfirmAction(false)}>
+              No, Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleConfirmAction(true)}>
+              Yes, Proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

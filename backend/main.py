@@ -9,6 +9,7 @@ from routes.path import router as path_router
 from routes.route import router as route_router
 from routes.daily_trip import router as daily_trip_router
 from routes.deployment import router as deployment_router
+from routes.movi import router as movi_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -29,6 +30,7 @@ app.include_router(path_router)
 app.include_router(route_router)
 app.include_router(daily_trip_router)
 app.include_router(deployment_router)
+app.include_router(movi_router)
 
 @app.get("/health")
 def health_check():
