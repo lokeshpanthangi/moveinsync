@@ -340,3 +340,17 @@ def get_drivers_sorted_by_name(
         query = query.order_by(Driver.name.desc())
     
     return query.offset(skip).limit(limit).all()
+
+
+def get_driver_by_name(db: Session, name: str) -> Optional[Driver]:
+    """
+    Get a driver by exact name.
+    
+    Args:
+        db: Database session
+        name: Name of the driver
+        
+    Returns:
+        Driver object if found, None otherwise
+    """
+    return db.query(Driver).filter(Driver.name == name).first()

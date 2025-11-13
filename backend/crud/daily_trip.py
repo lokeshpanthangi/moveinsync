@@ -298,3 +298,17 @@ def bulk_delete_daily_trips(db: Session, trip_ids: List[int]) -> int:
     db.query(DailyTrip).filter(DailyTrip.trip_id.in_(trip_ids)).delete(synchronize_session=False)
     db.commit()
     return count
+
+
+def get_daily_trip_by_display_name(db: Session, display_name: str) -> Optional[DailyTrip]:
+    """
+    Get a daily trip by its display name (exact match).
+    
+    Args:
+        db: Database session
+        display_name: Display name of the trip
+        
+    Returns:
+        DailyTrip object if found, None otherwise
+    """
+    return db.query(DailyTrip).filter(DailyTrip.display_name == display_name).first()
