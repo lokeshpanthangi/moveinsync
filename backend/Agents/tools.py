@@ -697,6 +697,479 @@ def update_trip_booking_status(trip_display_name: str, new_percentage: float) ->
 
 
 # ==============================================================================
+# NEW DELETION TOOLS
+# ==============================================================================
+
+@tool
+def delete_deployment(deployment_id: int) -> str:
+    """
+    Delete a specific deployment by ID.
+    This removes the vehicle and driver assignment from a trip.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - will trigger confirmation flow.
+    
+    Args:
+        deployment_id: ID of the deployment to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        deployment = deployment_crud.get_deployment_by_id(db, deployment_id)
+        if not deployment:
+            return f"Error: Deployment with ID {deployment_id} not found."
+        
+        # Get details before deletion
+        trip_id = deployment.trip_id
+        vehicle_plate = deployment.vehicle.license_plate if deployment.vehicle else "Unknown"
+        
+        # Delete deployment
+        deployment_crud.delete_deployment(db, deployment_id)
+        
+        return f"Successfully deleted deployment (ID: {deployment_id}). Vehicle {vehicle_plate} is now unassigned from trip."
+    except Exception as e:
+        return f"Error deleting deployment: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_route(route_id: int) -> str:
+    """
+    Delete a route by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if route has active trips.
+    
+    Args:
+        route_id: ID of the route to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        route = route_crud.get_route(db, route_id)
+        if not route:
+            return f"Error: Route with ID {route_id} not found."
+        
+        route_name = route.route_display_name
+        
+        # Check for active trips (this should be caught by consequence checker)
+        trips = daily_trip_crud.get_daily_trips_by_route(db, route_id)
+        if trips:
+            return f"Warning: Route '{route_name}' has {len(trips)} trip(s). Delete anyway?"
+        
+        # Delete route
+        route_crud.delete_route(db, route_id)
+        
+        return f"Successfully deleted route '{route_name}' (ID: {route_id})."
+    except Exception as e:
+        return f"Error deleting route: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_stop(stop_id: int) -> str:
+    """
+    Delete a stop by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if stop is used in any paths.
+    
+    Args:
+        stop_id: ID of the stop to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        stop = stop_crud.get_stop(db, stop_id)
+        if not stop:
+            return f"Error: Stop with ID {stop_id} not found."
+        
+        stop_name = stop.name
+        
+        # Check if stop is used in paths
+        if stop.path_stops and len(stop.path_stops) > 0:
+            path_count = len(set(ps.path_id for ps in stop.path_stops))
+            return f"Warning: Stop '{stop_name}' is used in {path_count} path(s). Deleting will affect these paths."
+        
+        # Delete stop
+        stop_crud.delete_stop(db, stop_id)
+        
+        return f"Successfully deleted stop '{stop_name}' (ID: {stop_id})."
+    except Exception as e:
+        return f"Error deleting stop: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_path(path_id: int) -> str:
+    """
+    Delete a path by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if path is used in any routes.
+    
+    Args:
+        path_id: ID of the path to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        path = path_crud.get_path(db, path_id)
+        if not path:
+            return f"Error: Path with ID {path_id} not found."
+        
+        path_name = path.path_name
+        
+        # Check if path is used in routes
+        routes = route_crud.get_routes_by_path(db, path_id)
+        if routes:
+            return f"Warning: Path '{path_name}' is used in {len(routes)} route(s). Deleting will affect these routes."
+        
+        # Delete path
+        path_crud.delete_path(db, path_id)
+        
+        return f"Successfully deleted path '{path_name}' (ID: {path_id})."
+    except Exception as e:
+        return f"Error deleting path: {str(e)}"
+    finally:
+        db.close()
+
+
+# ==============================================================================
+# UPDATE TOOLS - For modifying existing data
+# ==============================================================================
+
+@tool
+def update_stop(stop_id: int, name: Optional[str] = None, latitude: Optional[float] = None, longitude: Optional[float] = None) -> str:
+    """
+    Update an existing stop's details.
+    
+    Args:
+        stop_id: ID of the stop to update
+        name: Optional new name for the stop
+        latitude: Optional new latitude
+        longitude: Optional new longitude
+    
+    Returns:
+        Confirmation message with updated stop details
+    """
+    db = get_db()
+    try:
+        from schemas import StopUpdate
+        stop = stop_crud.get_stop(db, stop_id)
+        if not stop:
+            return f"Error: Stop with ID {stop_id} not found."
+        
+        # Build update dict with only provided fields
+        update_data = {}
+        if name is not None:
+            update_data['name'] = name
+        if latitude is not None:
+            update_data['latitude'] = latitude
+        if longitude is not None:
+            update_data['longitude'] = longitude
+        
+        if not update_data:
+            return "No fields provided to update."
+        
+        # Apply updates
+        for key, value in update_data.items():
+            setattr(stop, key, value)
+        
+        db.commit()
+        db.refresh(stop)
+        
+        return f"Successfully updated stop (ID: {stop_id}): {stop.name} at ({stop.latitude}, {stop.longitude})."
+    except Exception as e:
+        db.rollback()
+        return f"Error updating stop: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def update_vehicle(
+    vehicle_id: int,
+    license_plate: Optional[str] = None,
+    vehicle_type: Optional[str] = None,
+    capacity: Optional[int] = None,
+    status: Optional[str] = None
+) -> str:
+    """
+    Update an existing vehicle's details.
+    
+    Args:
+        vehicle_id: ID of the vehicle to update
+        license_plate: Optional new license plate
+        vehicle_type: Optional new type ("bus" or "cab")
+        capacity: Optional new capacity
+        status: Optional new status
+    
+    Returns:
+        Confirmation message with updated vehicle details
+    """
+    db = get_db()
+    try:
+        vehicle = vehicle_crud.get_vehicle(db, vehicle_id)
+        if not vehicle:
+            return f"Error: Vehicle with ID {vehicle_id} not found."
+        
+        # Apply updates
+        if license_plate is not None:
+            vehicle.license_plate = license_plate
+        if vehicle_type is not None:
+            v_type = VehicleType.bus if vehicle_type.lower() == "bus" else VehicleType.cab
+            vehicle.type = v_type
+        if capacity is not None:
+            vehicle.capacity = capacity
+        if status is not None:
+            vehicle.status = status
+        
+        db.commit()
+        db.refresh(vehicle)
+        
+        return f"Successfully updated vehicle (ID: {vehicle_id}): {vehicle.license_plate}, Type: {vehicle.type.value}, Capacity: {vehicle.capacity}, Status: {vehicle.status}."
+    except Exception as e:
+        db.rollback()
+        return f"Error updating vehicle: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def update_driver(driver_id: int, name: Optional[str] = None, phone_number: Optional[str] = None) -> str:
+    """
+    Update an existing driver's details.
+    
+    Args:
+        driver_id: ID of the driver to update
+        name: Optional new name
+        phone_number: Optional new phone number
+    
+    Returns:
+        Confirmation message with updated driver details
+    """
+    db = get_db()
+    try:
+        driver = driver_crud.get_driver(db, driver_id)
+        if not driver:
+            return f"Error: Driver with ID {driver_id} not found."
+        
+        if name is not None:
+            driver.name = name
+        if phone_number is not None:
+            driver.phone_number = phone_number
+        
+        db.commit()
+        db.refresh(driver)
+        
+        return f"Successfully updated driver (ID: {driver_id}): {driver.name}, Phone: {driver.phone_number}."
+    except Exception as e:
+        db.rollback()
+        return f"Error updating driver: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def update_route(
+    route_id: int,
+    route_display_name: Optional[str] = None,
+    capacity: Optional[int] = None,
+    status: Optional[str] = None
+) -> str:
+    """
+    Update an existing route's details.
+    
+    Args:
+        route_id: ID of the route to update
+        route_display_name: Optional new display name
+        capacity: Optional new capacity
+        status: Optional new status ("active" or "deactivated")
+    
+    Returns:
+        Confirmation message with updated route details
+    """
+    db = get_db()
+    try:
+        route = route_crud.get_route(db, route_id)
+        if not route:
+            return f"Error: Route with ID {route_id} not found."
+        
+        if route_display_name is not None:
+            route.route_display_name = route_display_name
+        if capacity is not None:
+            route.capacity = capacity
+        if status is not None:
+            route.status = RouteStatus.active if status == "active" else RouteStatus.deactivated
+        
+        db.commit()
+        db.refresh(route)
+        
+        return f"Successfully updated route (ID: {route_id}): {route.route_display_name}, Capacity: {route.capacity}, Status: {route.status.value}."
+    except Exception as e:
+        db.rollback()
+        return f"Error updating route: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def update_trip(
+    trip_id: int,
+    display_name: Optional[str] = None,
+    booking_status_percentage: Optional[float] = None,
+    live_status: Optional[str] = None
+) -> str:
+    """
+    Update an existing trip's details.
+    
+    Args:
+        trip_id: ID of the trip to update
+        display_name: Optional new display name
+        booking_status_percentage: Optional new booking percentage (0-100)
+        live_status: Optional new status ("scheduled", "in_progress", "completed", "cancelled")
+    
+    Returns:
+        Confirmation message with updated trip details
+    """
+    db = get_db()
+    try:
+        trip = daily_trip_crud.get_daily_trip_by_id(db, trip_id)
+        if not trip:
+            return f"Error: Trip with ID {trip_id} not found."
+        
+        if display_name is not None:
+            trip.display_name = display_name
+        if booking_status_percentage is not None:
+            trip.booking_status_percentage = booking_status_percentage
+        if live_status is not None:
+            trip.live_status = live_status
+        
+        db.commit()
+        db.refresh(trip)
+        
+        return f"Successfully updated trip (ID: {trip_id}): {trip.display_name}, Booking: {trip.booking_status_percentage}%, Status: {trip.live_status}."
+    except Exception as e:
+        db.rollback()
+        return f"Error updating trip: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_vehicle(vehicle_id: int) -> str:
+    """
+    Delete a vehicle by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if vehicle is currently assigned to any trip.
+    
+    Args:
+        vehicle_id: ID of the vehicle to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        vehicle = vehicle_crud.get_vehicle(db, vehicle_id)
+        if not vehicle:
+            return f"Error: Vehicle with ID {vehicle_id} not found."
+        
+        vehicle_plate = vehicle.license_plate
+        
+        # Check for active deployments
+        deployments = deployment_crud.get_deployments_by_vehicle(db, vehicle_id)
+        if deployments:
+            return f"Warning: Vehicle '{vehicle_plate}' is assigned to {len(deployments)} trip(s). Remove assignments first."
+        
+        # Delete vehicle
+        vehicle_crud.delete_vehicle(db, vehicle_id)
+        
+        return f"Successfully deleted vehicle '{vehicle_plate}' (ID: {vehicle_id})."
+    except Exception as e:
+        return f"Error deleting vehicle: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_driver(driver_id: int) -> str:
+    """
+    Delete a driver by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if driver is currently assigned to any trip.
+    
+    Args:
+        driver_id: ID of the driver to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        driver = driver_crud.get_driver(db, driver_id)
+        if not driver:
+            return f"Error: Driver with ID {driver_id} not found."
+        
+        driver_name = driver.name
+        
+        # Check for active deployments
+        deployments = deployment_crud.get_deployments_by_driver(db, driver_id)
+        if deployments:
+            return f"Warning: Driver '{driver_name}' is assigned to {len(deployments)} trip(s). Remove assignments first."
+        
+        # Delete driver
+        driver_crud.delete_driver(db, driver_id)
+        
+        return f"Successfully deleted driver '{driver_name}' (ID: {driver_id})."
+    except Exception as e:
+        return f"Error deleting driver: {str(e)}"
+    finally:
+        db.close()
+
+
+@tool
+def delete_trip(trip_id: int) -> str:
+    """
+    Delete a trip by ID.
+    ⚠️ REQUIRES CONSEQUENCE CHECKING - checks if trip has vehicle/driver assignments or bookings.
+    
+    Args:
+        trip_id: ID of the trip to delete
+    
+    Returns:
+        Confirmation message or error
+    """
+    db = get_db()
+    try:
+        trip = daily_trip_crud.get_daily_trip_by_id(db, trip_id)
+        if not trip:
+            return f"Error: Trip with ID {trip_id} not found."
+        
+        trip_name = trip.display_name
+        
+        # Check for deployments
+        deployments = deployment_crud.get_deployments_by_trip(db, trip_id)
+        if deployments:
+            return f"Warning: Trip '{trip_name}' has {len(deployments)} deployment(s). Delete deployments first."
+        
+        # Check for bookings
+        if trip.booking_status_percentage > 0:
+            return f"Warning: Trip '{trip_name}' has {trip.booking_status_percentage}% bookings. This will affect passengers."
+        
+        # Delete trip
+        daily_trip_crud.delete_daily_trip(db, trip_id)
+        
+        return f"Successfully deleted trip '{trip_name}' (ID: {trip_id})."
+    except Exception as e:
+        return f"Error deleting trip: {str(e)}"
+    finally:
+        db.close()
+
+
+# ==============================================================================
 # ANALYTICS TOOLS
 # ==============================================================================
 
@@ -1085,35 +1558,107 @@ def generate_speech(text: str) -> str:
         return f"Error generating speech: {str(e)}"
 
 
-# Export all tools as a list for LangGraph
-ALL_TOOLS = [
-    list_all_stops,
-    create_new_stop,
-    get_stop_details,
-    list_stops_for_path,
-    create_new_path,
-    list_all_paths,
-    list_routes_using_path,
-    list_all_routes,
-    create_new_route,
-    list_all_vehicles,
-    count_unassigned_vehicles,
-    create_new_vehicle,
-    list_all_drivers,
-    create_new_driver,
-    get_trip_status,
-    get_trip_booking_info,
-    list_all_trips,
-    assign_vehicle_and_driver_to_trip,
-    remove_vehicle_from_trip,
-    update_trip_booking_status,
-    get_vehicle_utilization_summary,
-    # SQL Agent Tools
+# ==============================================================================
+# TOOL CATEGORIES - PAGE-BASED FILTERING
+# ==============================================================================
+
+# Global tools available on ALL pages
+GLOBAL_TOOLS = [
+    # SQL Agent Tools (advanced queries work everywhere)
     query_database_with_natural_language,
     execute_safe_sql_mutation,
     analyze_database_schema,
-    # Multimodal Tools
+    # Multimodal Tools (vision/audio work everywhere)
     analyze_screenshot,
     transcribe_audio,
     generate_speech,
 ]
+
+# Bus Dashboard page tools (trips, vehicles, drivers, deployments)
+BUS_DASHBOARD_TOOLS = [
+    list_all_trips,
+    get_trip_status,
+    get_trip_booking_info,
+    assign_vehicle_and_driver_to_trip,
+    remove_vehicle_from_trip,
+    update_trip_booking_status,
+    update_trip,
+    delete_trip,
+    delete_deployment,
+    list_all_vehicles,
+    count_unassigned_vehicles,
+    create_new_vehicle,
+    update_vehicle,
+    delete_vehicle,
+    list_all_drivers,
+    create_new_driver,
+    update_driver,
+    delete_driver,
+    get_vehicle_utilization_summary,
+]
+
+# Stops & Paths page tools
+STOPS_PATHS_TOOLS = [
+    list_all_stops,
+    create_new_stop,
+    get_stop_details,
+    update_stop,
+    delete_stop,
+    list_all_paths,
+    list_stops_for_path,
+    create_new_path,
+    delete_path,
+]
+
+# Routes page tools
+ROUTES_TOOLS = [
+    list_all_routes,
+    list_routes_using_path,
+    create_new_route,
+    update_route,
+    delete_route,
+]
+
+# Export all tools as a list for backward compatibility
+ALL_TOOLS = (
+    GLOBAL_TOOLS + 
+    BUS_DASHBOARD_TOOLS + 
+    STOPS_PATHS_TOOLS + 
+    ROUTES_TOOLS
+)
+
+
+def get_tools_for_page(page: str) -> list:
+    """
+    Get tools available for a specific page context.
+    This enables page-aware tool filtering for better agent performance.
+    
+    Args:
+        page: Page context (busDashboard, stops_paths, routes, vehicles, drivers, unknown)
+    
+    Returns:
+        List of tools available for that page (always includes GLOBAL_TOOLS)
+    """
+    page_tools = {
+        "busDashboard": GLOBAL_TOOLS + BUS_DASHBOARD_TOOLS,
+        "stops_paths": GLOBAL_TOOLS + STOPS_PATHS_TOOLS,
+        "routes": GLOBAL_TOOLS + ROUTES_TOOLS,
+        "vehicles": GLOBAL_TOOLS + BUS_DASHBOARD_TOOLS,  # Vehicles are part of bus dashboard
+        "drivers": GLOBAL_TOOLS + BUS_DASHBOARD_TOOLS,   # Drivers are part of bus dashboard
+        "unknown": GLOBAL_TOOLS + BUS_DASHBOARD_TOOLS,   # Default to bus dashboard
+    }
+    
+    tools = page_tools.get(page, GLOBAL_TOOLS + BUS_DASHBOARD_TOOLS)
+    
+    # Log tool breakdown
+    print(f"📊 Tool Breakdown for '{page}':")
+    print(f"   - Global Tools: {len(GLOBAL_TOOLS)}")
+    if page in ["busDashboard", "vehicles", "drivers", "unknown"]:
+        print(f"   - Bus Dashboard Tools: {len(BUS_DASHBOARD_TOOLS)}")
+    elif page == "stops_paths":
+        print(f"   - Stops & Paths Tools: {len(STOPS_PATHS_TOOLS)}")
+    elif page == "routes":
+        print(f"   - Routes Tools: {len(ROUTES_TOOLS)}")
+    print(f"   - Total: {len(tools)} tools available")
+    
+    return tools

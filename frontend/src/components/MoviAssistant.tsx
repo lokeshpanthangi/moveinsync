@@ -28,6 +28,7 @@ export function MoviAssistant() {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
+  const [contextPage, setContextPage] = useState("unknown");
   const [confirmationDialog, setConfirmationDialog] = useState<{
     open: boolean;
     message: string;
@@ -37,6 +38,18 @@ export function MoviAssistant() {
   // Generate session ID on mount
   useEffect(() => {
     setSessionId(`session-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+  }, []);
+
+  // Detect current page context
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    let page = "unknown";
+    if (currentPath.includes("/buses")) page = "busDashboard";
+    else if (currentPath.includes("/routes")) page = "routes";
+    else if (currentPath.includes("/stops-paths")) page = "stops_paths";
+    else if (currentPath.includes("/vehicles")) page = "vehicles";
+    else if (currentPath.includes("/drivers")) page = "drivers";
+    setContextPage(page);
   }, []);
 
   const quickActions = [
@@ -64,15 +77,7 @@ export function MoviAssistant() {
     setIsLoading(true);
     
     try {
-      // Get current page context
-      const currentPath = window.location.pathname;
-      let contextPage = "unknown";
-      if (currentPath.includes("/buses")) contextPage = "busDashboard";
-      else if (currentPath.includes("/routes")) contextPage = "routes";
-      else if (currentPath.includes("/stops-paths")) contextPage = "stops_paths";
-      else if (currentPath.includes("/vehicles")) contextPage = "vehicles";
-      else if (currentPath.includes("/drivers")) contextPage = "drivers";
-      
+      // Use the stored context page
       // Call Movi API
       const response = await fetch(`${API_URL}/movi/chat`, {
         method: "POST",
@@ -195,7 +200,14 @@ export function MoviAssistant() {
 
           {/* Context Indicator */}
           <div className="px-4 py-2 bg-muted/50 text-xs text-muted-foreground border-b border-border">
-            Context: Bus Dashboard
+            Context: {
+              contextPage === "busDashboard" ? "Bus Dashboard (Trips, Vehicles, Drivers)" :
+              contextPage === "routes" ? "Routes (Route Management)" :
+              contextPage === "stops_paths" ? "Stops & Paths (Stop & Path Configuration)" :
+              contextPage === "vehicles" ? "Vehicles (Vehicle Management)" :
+              contextPage === "drivers" ? "Drivers (Driver Management)" :
+              "General"
+            }
           </div>
 
           {/* Messages Area */}

@@ -22,12 +22,18 @@ class VehicleType(str, Enum):
 # ----------------------------
 
 class StopBase(BaseModel):
+    name: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+
+class StopCreate(BaseModel):
     name: str
     latitude: float
     longitude: float
 
 
-class StopCreate(StopBase):
+class StopUpdate(StopBase):
     pass
 
 
@@ -44,11 +50,16 @@ class PathStopBase(BaseModel):
 
 
 class PathBase(BaseModel):
+    path_name: Optional[str] = None
+    stops: Optional[List[PathStopBase]] = None
+
+
+class PathCreate(BaseModel):
     path_name: str
     stops: List[PathStopBase]
 
 
-class PathCreate(PathBase):
+class PathUpdate(PathBase):
     pass
 
 
@@ -62,23 +73,44 @@ class PathResponse(BaseModel):
 
 
 class RouteBase(BaseModel):
+    path_id: Optional[int] = None
+    route_display_name: Optional[str] = None
+    shift_time: Optional[time] = None
+    direction: Optional[str] = None
+    start_point: Optional[str] = None
+    end_point: Optional[str] = None
+    capacity: Optional[int] = None
+    allocated_waitlist: Optional[int] = None
+    status: Optional[RouteStatus] = None
+
+
+class RouteCreate(BaseModel):
     path_id: int
     route_display_name: str
     shift_time: time
     direction: str
-    start_point: str
-    end_point: str
+    start_point: Optional[str] = None
+    end_point: Optional[str] = None
     capacity: int
     allocated_waitlist: int = 0
     status: RouteStatus = RouteStatus.active
 
 
-class RouteCreate(RouteBase):
+class RouteUpdate(RouteBase):
     pass
 
 
-class RouteResponse(RouteBase):
+class RouteResponse(BaseModel):
     route_id: int
+    path_id: int
+    route_display_name: str
+    shift_time: time
+    direction: str
+    start_point: Optional[str] = None
+    end_point: Optional[str] = None
+    capacity: int
+    allocated_waitlist: int
+    status: RouteStatus
 
     class Config:
         orm_mode = True
@@ -89,13 +121,20 @@ class RouteResponse(RouteBase):
 # ----------------------------
 
 class VehicleBase(BaseModel):
+    license_plate: Optional[str] = None
+    type: Optional[VehicleType] = None
+    capacity: Optional[int] = None
+    status: Optional[str] = None
+
+
+class VehicleCreate(BaseModel):
     license_plate: str
     type: VehicleType
     capacity: int
     status: str = "active"
 
 
-class VehicleCreate(VehicleBase):
+class VehicleUpdate(VehicleBase):
     pass
 
 
@@ -107,11 +146,16 @@ class VehicleResponse(VehicleBase):
 
 
 class DriverBase(BaseModel):
+    name: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+class DriverCreate(BaseModel):
     name: str
     phone_number: str
 
 
-class DriverCreate(DriverBase):
+class DriverUpdate(DriverBase):
     pass
 
 
@@ -123,13 +167,20 @@ class DriverResponse(DriverBase):
 
 
 class DailyTripBase(BaseModel):
+    route_id: Optional[int] = None
+    display_name: Optional[str] = None
+    booking_status_percentage: Optional[float] = None
+    live_status: Optional[str] = None
+
+
+class DailyTripCreate(BaseModel):
     route_id: int
     display_name: str
     booking_status_percentage: float = 0.0
     live_status: str = "scheduled"
 
 
-class DailyTripCreate(DailyTripBase):
+class DailyTripUpdate(DailyTripBase):
     pass
 
 
@@ -141,12 +192,18 @@ class DailyTripResponse(DailyTripBase):
 
 
 class DeploymentBase(BaseModel):
+    trip_id: Optional[int] = None
+    vehicle_id: Optional[int] = None
+    driver_id: Optional[int] = None
+
+
+class DeploymentCreate(BaseModel):
     trip_id: int
     vehicle_id: int
     driver_id: int
 
 
-class DeploymentCreate(DeploymentBase):
+class DeploymentUpdate(DeploymentBase):
     pass
 
 

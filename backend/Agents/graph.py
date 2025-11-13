@@ -1,6 +1,6 @@
 """
 Movi Agent Graph
-LangGraph workflow connecting all nodes with human-in-the-loop
+LangGraph workflow connecting all nodes with human-in-the-loop and page-aware tool filtering
 Following the structure of simple_LLM.py with interrupt_before for human confirmation
 """
 from langgraph.graph import StateGraph, END
@@ -20,13 +20,13 @@ from nodes import (
     get_confirmation_node,
     await_user_confirmation_node
 )
-from tools import ALL_TOOLS
+from tools import ALL_TOOLS, get_tools_for_page
 
 load_dotenv()
 
-# ========== INITIALIZE LLM WITH TOOLS ==========
+# ========== INITIALIZE LLM ==========
+# Note: Tools are now bound dynamically in agent_node based on page context
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-llm_with_tools = llm.bind_tools(ALL_TOOLS)
 
 
 # ========== DEFINE ROUTING FUNCTIONS ==========
@@ -34,30 +34,49 @@ def should_check_consequences(state: MoviState):
     """
     Router: Check if we need to verify consequences before executing
     Similar to should_continue in simple_LLM.py
+    
+    This checks the AGENT'S INTENT to call dangerous tools BEFORE executing them.
     """
     last_message = state["messages"][-1]
     
-    # Check if the last message has tool calls
+    # Check if the last message has tool calls (this means agent wants to call tools)
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        # Define dangerous actions that need human confirmation
+        dangerous_tools = [
+            "remove_vehicle_from_trip",           # Deletion - needs HITL
+            "delete_deployment",                   # Deletion - needs HITL
+            "execute_safe_sql_mutation",          # Mutation - needs HITL
+            "update_trip_booking_status",         # Could affect bookings
+        ]
+        
         # Check if any tool call is a dangerous action
         for tool_call in last_message.tool_calls:
             tool_name = tool_call.get("name", "")
             
-            # Dangerous actions that need confirmation
-            dangerous_tools = [
-                "remove_vehicle_from_trip",
-                "delete_deployment",
-                "update_trip_booking_status"
-            ]
-            
             if tool_name in dangerous_tools:
+                # Extract entities from tool arguments for consequence checking
+                tool_args = tool_call.get("args", {})
+                
+                # Update state with intent and entities
+                state["user_intent"] = tool_name
+                state["identified_entities"] = tool_args
+                
                 return "check_consequences"
         
         # Safe action, go directly to tools
         return "tools"
     
-    # No tool calls, end conversation
+    # No tool calls, end conversation (agent provided final answer)
     return "end"
+
+
+def route_after_tools(state: MoviState):
+    """
+    Router: After tools execute, check if agent should continue or end
+    """
+    # After tools execute, always go back to agent to process results
+    # Agent will decide if it needs more tools or can provide final answer
+    return "agent"
 
 
 def should_get_confirmation(state: MoviState):
@@ -94,13 +113,27 @@ def cancellation_node(state: MoviState):
     }
 
 
+# ========== DEFINE PAGE-AWARE TOOL NODE ==========
+def page_aware_tool_node(state: MoviState):
+    """
+    Execute tools filtered by the current page context.
+    This ensures only relevant tools are available for execution.
+    """
+    context_page = state.get("context_page", "unknown")
+    page_tools = get_tools_for_page(context_page)
+    
+    # Create a ToolNode with page-specific tools
+    tool_executor = ToolNode(page_tools)
+    return tool_executor(state)
+
+
 # ========== BUILD GRAPH ==========
 workflow = StateGraph(MoviState)
 
 # Add nodes
 workflow.add_node("input_processor", input_processor_node)  # NEW: Entry point
 workflow.add_node("agent", agent_node)
-workflow.add_node("tools", ToolNode(ALL_TOOLS))
+workflow.add_node("tools", page_aware_tool_node)  # Page-aware tool execution
 workflow.add_node("check_consequences", check_consequences_node)
 workflow.add_node("confirmation", get_confirmation_node)
 workflow.add_node("human_confirmation", await_user_confirmation_node)
@@ -146,7 +179,8 @@ workflow.add_conditional_edges(
     }
 )
 
-# After tools execute, go back to agent for response
+# After tools execute, ALWAYS go back to agent to process results
+# Agent will either call more tools or provide final answer
 workflow.add_edge("tools", "agent")
 
 # After cancellation, end

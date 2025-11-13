@@ -10,9 +10,9 @@ import sys
 import os
 
 # Add Agents directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "agents"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Agents"))
 
-from agents.graph import app as movi_graph
+from graph import app as movi_graph
 
 router = APIRouter(prefix="/movi", tags=["movi"])
 
@@ -48,22 +48,35 @@ async def chat_with_movi(request: ChatRequest):
         ChatResponse with Movi's reply and any confirmation requests
     """
     try:
-        # Prepare initial state
-        initial_state = {
-            "messages": [HumanMessage(content=request.message)],
-            "context_page": request.context_page,
-            "uploaded_image": request.image_base64,
-            "uploaded_audio": request.audio_base64,
-            "requires_confirmation": False,
-            "awaiting_confirmation": False,
-            "user_confirmed": None
-        }
-        
         # Configure session with thread_id for state persistence
         config = {"configurable": {"thread_id": request.session_id}}
         
+        # Check if this is resuming an interrupted conversation
+        # by getting the current state from memory
+        current_state = movi_graph.get_state(config)
+        
+        # If there's an existing conversation, we just add the new message
+        # Otherwise, initialize a new conversation
+        if current_state and current_state.values:
+            # Continue existing conversation - just add the new message
+            # The graph will automatically load previous state from checkpointer
+            input_state = {
+                "messages": [HumanMessage(content=request.message)],
+            }
+        else:
+            # New conversation - initialize full state
+            input_state = {
+                "messages": [HumanMessage(content=request.message)],
+                "context_page": request.context_page,
+                "uploaded_image": request.image_base64,
+                "uploaded_audio": request.audio_base64,
+                "requires_confirmation": False,
+                "awaiting_confirmation": False,
+                "user_confirmed": None
+            }
+        
         # Invoke the graph
-        result = movi_graph.invoke(initial_state, config=config)
+        result = movi_graph.invoke(input_state, config=config)
         
         # Extract response
         last_message = result["messages"][-1]
@@ -78,7 +91,14 @@ async def chat_with_movi(request: ChatRequest):
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Movi Error: {str(e)}")
+        print(f"Full traceback:\n{error_details}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error processing request: {str(e)}"
+        )
 
 
 # ========== HEALTH CHECK ==========
