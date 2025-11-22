@@ -1,0 +1,30 @@
+# Core Framework
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+websockets
+
+# Database
+sqlalchemy
+alembic
+
+# LangChain & LangGraph
+langgraph
+langchain
+langchain-core
+langchain-openai
+langchain-community
+
+# OpenAI (for audio & vision)
+openai
+
+# Multimodal Support
+pillow
+
+# Environment & Configuration
+python-dotenv
+python-multipart
+
+# Utilities
+requests
