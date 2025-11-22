@@ -8,6 +8,8 @@ A modern fleet management system with AI-powered voice assistant for managing bu
 
 **[Deploy Link](http://13.234.202.243:8080/auth/login)**
 
+http://13.234.202.243:8080
+
 ---
 
 ## Architecture
